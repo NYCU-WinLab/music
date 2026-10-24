@@ -41,4 +41,15 @@ export const addedAsLabel = {
   queue: "點播",
   next: "排下一首",
   cut_in: "插播",
+  auto: "自動推薦",
 } as const
+
+/** Who brought a song and how: "小明點播", "小明的歌單", "自動推薦". */
+export function addedLine(item: {
+  addedAs: keyof typeof addedAsLabel
+  addedBy: string | null
+  fromPlaylist: boolean
+}) {
+  if (item.addedAs === "auto") return addedAsLabel.auto
+  return `${item.addedBy ?? "有人"}${item.fromPlaylist ? "的歌單" : addedAsLabel[item.addedAs]}`
+}

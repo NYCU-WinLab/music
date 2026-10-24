@@ -16,7 +16,7 @@ import type { listQueue } from "@/lib/actions/music"
 
 import { add, next, remove } from "./actions"
 import { ok } from "./ok"
-import { addedAsLabel, Cover, length } from "./song"
+import { addedAsLabel, addedLine, Cover, length } from "./song"
 
 type Item = Awaited<ReturnType<typeof listQueue.run>>["items"][number]
 
@@ -50,13 +50,10 @@ function Row({ item }: { item: Item }) {
             .join("，")}
         </span>
         <span className="flex flex-wrap items-center gap-2 text-muted-foreground">
-          {item.addedAs !== "queue" && (
+          {item.addedAs !== "queue" && item.addedAs !== "auto" && (
             <Badge variant="muted">{addedAsLabel[item.addedAs]}</Badge>
           )}
-          <span>
-            {item.addedBy ?? "有人"}
-            {item.fromPlaylist ? "的歌單" : addedAsLabel.queue}
-          </span>
+          <span>{addedLine(item)}</span>
         </span>
       </div>
       <div className="flex shrink-0 gap-1">

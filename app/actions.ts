@@ -9,6 +9,7 @@ import {
   playNext,
   removeSong,
   searchMusic,
+  setAutoplay,
   setPaused,
   setVolume,
   skipSong,
@@ -40,3 +41,4 @@ export const skip = async (input: unknown) => call(skipSong, input)
 export const remove = async (input: unknown) => call(removeSong, input)
 export const pause = async (input: unknown) => call(setPaused, input)
 export const volume = async (input: unknown) => call(setVolume, input)
+export const autoplay = async (input: unknown) => call(setAutoplay, input)

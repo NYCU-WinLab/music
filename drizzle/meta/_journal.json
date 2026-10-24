@@ -15,6 +15,13 @@
       "when": 1792826163377,
       "tag": "0001_drop_want_too",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792827061999,
+      "tag": "0002_autoplay",
+      "breakpoints": true
     }
   ]
 }

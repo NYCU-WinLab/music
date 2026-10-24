@@ -3,6 +3,7 @@
 // holds the player row, so two members pressing at once take turns.
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm"
 
+import { fillQueue } from "@/lib/actions/autoplay"
 import { db } from "@/lib/db"
 import { activities, player, queueItems, tracks, user } from "@/lib/db/schema"
 import type { Track } from "@/lib/youtube"
@@ -10,8 +11,16 @@ import type { Track } from "@/lib/youtube"
 export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
 /** Runs fn holding the one player row; afterwards the queue has a current
- * item whenever it has any item, and the player's version moves on. */
+ * item whenever it has any item, and the player's version moves on. A queue
+ * left with nothing waiting gets a recommendation after the commit. */
 export async function withQueue<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+  const result = await inQueue(fn)
+  setTimeout(() => void fillQueue(), 0)
+  return result
+}
+
+/** withQueue without the recommendation, for autoplay itself. */
+export async function inQueue<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
   return db.transaction(async (tx) => {
     await tx.insert(player).values({ id: 1 }).onConflictDoNothing()
     await tx.execute(sql`select 1 from ${player} where id = 1 for update`)
@@ -23,6 +32,15 @@ export async function withQueue<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
       .where(eq(player.id, 1))
     return result
   })
+}
+
+/** Takes waiting recommendations out: a member's song goes first, and
+ * autoplay recommends again once the queue is dry. */
+export async function dropRecommendations(tx: Tx) {
+  await tx
+    .update(queueItems)
+    .set({ status: "removed", endedAt: new Date() })
+    .where(and(eq(queueItems.status, "queued"), eq(queueItems.addedAs, "auto")))
 }
 
 /** The playing item, if any. */

@@ -1,0 +1,1 @@
+ALTER TABLE "player" ADD COLUMN "autoplay" boolean DEFAULT true NOT NULL;
