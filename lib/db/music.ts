@@ -41,8 +41,9 @@ export const queueItems = pgTable(
       .default("queued"),
     sort: doublePrecision().notNull(),
     addedBy: uuid().references(() => user.id, { onDelete: "set null" }),
-    // How it entered: queue (the end), next (the front), cut_in (at once).
-    addedAs: text({ enum: ["queue", "next", "cut_in"] })
+    // How it entered: queue (the end), next (the front), cut_in (at once),
+    // or auto (recommended when the queue ran dry; addedBy is null).
+    addedAs: text({ enum: ["queue", "next", "cut_in", "auto"] })
       .notNull()
       .default("queue"),
     // The playlist link it came from, when it came with others.
@@ -79,6 +80,8 @@ export const activities = pgTable(
         "pause",
         "resume",
         "volume",
+        "auto",
+        "autoplay",
       ],
     }).notNull(),
     itemId: uuid().references(() => queueItems.id, { onDelete: "set null" }),
@@ -86,6 +89,7 @@ export const activities = pgTable(
       count?: number
       volume?: number
       title?: string
+      on?: boolean
     }>(),
     createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
   },
@@ -98,6 +102,8 @@ export const player = pgTable("player", {
   id: integer().primaryKey().default(1),
   paused: boolean().notNull().default(false),
   volume: real().notNull().default(40),
+  // When the queue runs dry, recommend the next song (autoplay.ts).
+  autoplay: boolean().notNull().default(true),
   // Bumped on every change the player must follow; it long-polls on it.
   version: integer().notNull().default(0),
   positionS: real().notNull().default(0),

@@ -6,7 +6,7 @@ import { listPlayed } from "@/lib/actions/music"
 import { requireActor } from "@/lib/auth/session"
 
 import { AddButtons } from "../add-songs"
-import { addedAsLabel, Cover } from "../song"
+import { addedLine, Cover } from "../song"
 
 export const dynamic = "force-dynamic"
 
@@ -46,10 +46,7 @@ export default async function Played() {
                   <div className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate">{item.track.title}</span>
                     <span className="truncate text-muted-foreground">
-                      {item.addedBy ?? "有人"}
-                      {item.fromPlaylist
-                        ? "的歌單"
-                        : addedAsLabel[item.addedAs]}
+                      {addedLine(item)}
                       {how && `，${item.endedBy ?? "播放器"}${how}`}
                     </span>
                   </div>

@@ -12,6 +12,7 @@ import * as React from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
+import { Switch } from "@/components/ui/switch"
 import {
   Tooltip,
   TooltipContent,
@@ -19,9 +20,9 @@ import {
 } from "@/components/ui/tooltip"
 import type { nowPlaying } from "@/lib/actions/music"
 
-import { pause, skip, volume } from "./actions"
+import { autoplay, pause, skip, volume } from "./actions"
 import { ok } from "./ok"
-import { addedAsLabel, Cover, duration } from "./song"
+import { addedLine, Cover, duration } from "./song"
 
 type Playing = Awaited<ReturnType<typeof nowPlaying.run>>
 
@@ -60,10 +61,7 @@ export function NowPlaying({ playing }: { playing: Playing }) {
             </p>
             <p className="flex flex-wrap items-center gap-2 text-muted-foreground">
               {current.addedAs === "cut_in" && <Badge>插播</Badge>}
-              <span>
-                {current.addedBy ?? "有人"}
-                {addedAsLabel[current.addedAs]}
-              </span>
+              <span>{addedLine(current)}</span>
             </p>
           </div>
         </div>
@@ -105,6 +103,13 @@ export function NowPlaying({ playing }: { playing: Playing }) {
           跳過
         </Button>
         <Volume key={playing.volume} initial={playing.volume} />
+        <label className="flex items-center gap-2">
+          <Switch
+            checked={playing.autoplay}
+            onCheckedChange={async (on) => ok(await autoplay({ on }))}
+          />
+          自動推薦
+        </label>
         {note && <span className="text-muted-foreground">{note}</span>}
       </div>
     </section>

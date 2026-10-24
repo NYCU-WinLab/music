@@ -30,6 +30,10 @@ function sentence(entry: Entry) {
       return "暫停"
     case "resume":
       return "繼續播放"
+    case "auto":
+      return `自動推薦${song}`
+    case "autoplay":
+      return entry.detail?.on ? "打開自動推薦" : "關掉自動推薦"
     case "volume":
       return `把音量調到 ${entry.detail?.volume ?? ""}`
   }
@@ -51,7 +55,7 @@ export function Activity({ activities }: { activities: Entry[] }) {
                 {time.format(entry.createdAt)}
               </span>
               <span className="min-w-0">
-                {entry.who ?? "有人"}
+                {entry.kind !== "auto" && (entry.who ?? "有人")}
                 {sentence(entry)}
               </span>
             </li>

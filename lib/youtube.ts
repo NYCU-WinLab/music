@@ -64,6 +64,39 @@ export async function searchSongs(query: string, limit = 12): Promise<Track[]> {
     .slice(0, limit)
 }
 
+/** What YouTube Music would play after this song, in its order. */
+export async function upNext(videoId: string): Promise<Track[]> {
+  const yt = await youtube()
+  const panel = await yt.music.getUpNext(videoId, true)
+  return (panel.contents ?? [])
+    .map((item) => {
+      const x = item as unknown as {
+        video_id?: string
+        title?: string | { text?: string }
+        artists?: { name?: string }[]
+        author?: string
+        duration?: { seconds?: number }
+        thumbnail?: { url?: string }[]
+      }
+      if (!x.video_id || x.video_id === videoId) return null
+      const title = typeof x.title === "string" ? x.title : x.title?.text
+      return {
+        videoId: x.video_id,
+        title: title?.trim() || x.video_id,
+        artist:
+          x.artists
+            ?.map((a) => a.name)
+            .filter(Boolean)
+            .join(", ") ||
+          x.author ||
+          "",
+        durationS: x.duration?.seconds || null,
+        thumbnail: x.thumbnail?.at(-1)?.url ?? null,
+      }
+    })
+    .filter((track): track is Track => track !== null)
+}
+
 /** One video's details by id. */
 export async function getTrack(videoId: string): Promise<Track> {
   const yt = await youtube()

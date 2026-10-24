@@ -5,6 +5,7 @@ import { defineAction } from "@/lib/actions/define"
 import {
   currentItem,
   describeItems,
+  dropRecommendations,
   liveItemOf,
   logActivity,
   playerRow,
@@ -36,7 +37,7 @@ export const nowPlaying = defineAction({
   name: "now_playing",
   title: "正在播放",
   description:
-    "The song playing on the lab HomePod: title, artist, who added it and how (queue, next or cut_in), position in seconds, paused, volume (0-100) and whether the player on the lab network is online.",
+    "The song playing on the lab HomePod: title, artist, who added it and how (queue, next or cut_in), position in seconds, paused, volume (0-100), autoplay (recommend a song when the queue runs dry) and whether the player on the lab network is online.",
   kind: "query",
   input: z.object({}),
   run: async () => {
@@ -51,6 +52,7 @@ export const nowPlaying = defineAction({
       current: current ?? null,
       paused: state?.paused ?? false,
       volume: state?.volume ?? 40,
+      autoplay: state?.autoplay ?? true,
       positionS: state ? Math.round(positionNow(state) * 10) / 10 : 0,
       state: state?.state ?? "idle",
       error: state?.error ?? null,
@@ -115,7 +117,7 @@ export const addSong = defineAction({
   name: "add_song",
   title: "點歌",
   description:
-    "Queue a song by YouTube video id. as=queue adds it at the end, as=next plays it after the current song, as=cut_in plays it now and puts the current song back at the front to resume later. A song already in the queue is not added twice: queue leaves it where it is, next moves it to the front, cut_in plays it now.",
+    "Queue a song by YouTube video id. as=queue adds it at the end, as=next plays it after the current song, as=cut_in plays it now and puts the current song back at the front to resume later. Waiting recommendations (added_as auto) give way and are taken out. A song already in the queue is not added twice: queue leaves it where it is, next moves it to the front, cut_in plays it now.",
   kind: "mutation",
   input: z.object({
     videoId,
@@ -124,6 +126,7 @@ export const addSong = defineAction({
   run: async (actor, input) => {
     const track = await getTrack(input.videoId)
     return withQueue(async (tx) => {
+      await dropRecommendations(tx)
       await saveTracks(tx, [track])
       const keys = await sortKeys(tx)
       const existing = await liveItemOf(tx, input.videoId)
@@ -213,6 +216,7 @@ export const addPlaylist = defineAction({
     const list = await getPlaylist(playlistId)
     if (!list.tracks.length) throw new Error("這個歌單是空的或看不到")
     return withQueue(async (tx) => {
+      await dropRecommendations(tx)
       await saveTracks(tx, list.tracks)
       let { end } = await sortKeys(tx)
       let added = 0
@@ -364,4 +368,24 @@ export const listPlayed = defineAction({
       .limit(limit)
     return { items: await describeItems(db, items) }
   },
+})
+
+export const setAutoplay = defineAction({
+  name: "set_autoplay",
+  title: "自動推薦",
+  description:
+    "Turn autoplay on or off for everyone. On, when nothing waits in the queue, music adds a song YouTube Music recommends after one a member picked recently (added_as auto). Skipping it works like any song.",
+  kind: "mutation",
+  input: z.object({ on: z.boolean() }),
+  run: async (actor, { on }) =>
+    withQueue(async (tx) => {
+      await tx.update(player).set({ autoplay: on }).where(eq(player.id, 1))
+      if (!on) await dropRecommendations(tx)
+      await logActivity(tx, {
+        userId: actor.userId,
+        kind: "autoplay",
+        detail: { on },
+      })
+      return { autoplay: on }
+    }),
 })

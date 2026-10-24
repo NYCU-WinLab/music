@@ -9,6 +9,7 @@ import {
   playNext,
   removeSong,
   searchMusic,
+  setAutoplay,
   setPaused,
   setVolume,
   skipSong,
@@ -30,4 +31,5 @@ export const actions: Action[] = [
   removeSong,
   setPaused,
   setVolume,
+  setAutoplay,
 ]
