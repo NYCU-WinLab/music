@@ -9,6 +9,9 @@
 
 # WinLab Music
 
+> [!IMPORTANT]
+> Archived on 2026-10-24. Music now lives in the portal at [portal.winlab.tw/music](https://portal.winlab.tw/music) ([NYCU-WinLab/portal](https://github.com/NYCU-WinLab/portal)), and music.winlab.tw redirects there.
+
 > The lab's shared music queue: members search YouTube Music or paste a link, and a small player streams the queue to the lab HomePod over AirPlay.
 
 `nextjs` `postgres` `airplay` `docker` `mcp`
