@@ -44,7 +44,7 @@ function musicItem(item: any): Track | null {
     videoId: item.id,
     title: String(item.title ?? item.name ?? "").trim() || item.id,
     artist: names(item.artists) || names(item.authors) || "",
-    durationS: item.duration?.seconds ?? null,
+    durationS: item.duration?.seconds || null,
     thumbnail:
       item.thumbnail?.contents?.at(-1)?.url ??
       item.thumbnail?.contents?.[0]?.url ??
@@ -73,7 +73,8 @@ export async function getTrack(videoId: string): Promise<Track> {
     videoId,
     title: basic.title ?? videoId,
     artist: (basic.author ?? "").replace(/ - Topic$/, ""),
-    durationS: basic.duration ?? null,
+    // A live stream (a radio channel) has no length: null.
+    durationS: basic.is_live ? null : basic.duration || null,
     thumbnail: basic.thumbnail?.[0]?.url ?? null,
   }
 }

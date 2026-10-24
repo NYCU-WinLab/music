@@ -78,7 +78,13 @@ export function NowPlaying({ playing, me }: { playing: Playing; me: string }) {
         <h1 className="text-title font-medium">還沒有歌，點一首吧</h1>
       )}
 
-      {current && (
+      {current && !current.track.durationS && (
+        <div>
+          <Badge variant="muted">直播</Badge>
+        </div>
+      )}
+
+      {!!current?.track.durationS && (
         <Elapsed
           key={`${current.id}:${playing.positionS}:${playing.state}:${playing.paused}`}
           positionS={playing.positionS}

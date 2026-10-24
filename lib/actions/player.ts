@@ -2,7 +2,7 @@
 // HomePod. It is not a member, so these are not actions; /api/player calls
 // them after checking PLAYER_TOKEN. It follows what members asked for
 // (playerState) and says what it did (playerReport).
-import { and, asc, eq } from "drizzle-orm"
+import { and, asc, eq, gt } from "drizzle-orm"
 
 import { announceChange } from "@/lib/actions/changes"
 import { currentItem, playerRow, withQueue } from "@/lib/actions/queue"
@@ -32,10 +32,12 @@ export async function playerState() {
     .innerJoin(tracks, eq(tracks.videoId, queueItems.videoId))
     .where(eq(queueItems.status, "playing"))
     .limit(1)
+  // Songs to fetch ahead; a live stream has no file to fetch.
   const upcoming = await db
     .select({ videoId: queueItems.videoId })
     .from(queueItems)
-    .where(eq(queueItems.status, "queued"))
+    .innerJoin(tracks, eq(tracks.videoId, queueItems.videoId))
+    .where(and(eq(queueItems.status, "queued"), gt(tracks.durationS, 0)))
     .orderBy(asc(queueItems.sort))
     .limit(2)
   const [current] = rows

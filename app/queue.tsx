@@ -21,7 +21,7 @@ import type { listQueue } from "@/lib/actions/music"
 
 import { add, alsoWant, next, remove } from "./actions"
 import { ok } from "./ok"
-import { addedAsLabel, Cover, duration, people } from "./song"
+import { addedAsLabel, Cover, length, people } from "./song"
 
 type Item = Awaited<ReturnType<typeof listQueue.run>>["items"][number]
 
@@ -54,7 +54,7 @@ function Row({ item, me }: { item: Item; me: string }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="truncate">{item.track.title}</span>
         <span className="truncate text-muted-foreground">
-          {[item.track.artist, duration(item.track.durationS)]
+          {[item.track.artist, length(item.track.durationS)]
             .filter(Boolean)
             .join("，")}
         </span>
