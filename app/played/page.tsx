@@ -47,7 +47,7 @@ export default async function Played() {
                     <span className="truncate">{item.track.title}</span>
                     <span className="truncate text-muted-foreground">
                       {addedLine(item)}
-                      {how && `，${item.endedBy ?? "播放器"}${how}`}
+                      {how && `，${item.endedBy ?? "播放器"} ${how}`}
                     </span>
                   </div>
                   <span className="hidden shrink-0 text-muted-foreground tabular-nums sm:inline">

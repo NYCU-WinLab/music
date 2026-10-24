@@ -55,7 +55,7 @@ export function Activity({ activities }: { activities: Entry[] }) {
                 {time.format(entry.createdAt)}
               </span>
               <span className="min-w-0">
-                {entry.kind !== "auto" && (entry.who ?? "有人")}
+                {entry.kind !== "auto" && `${entry.who ?? "有人"} `}
                 {sentence(entry)}
               </span>
             </li>
