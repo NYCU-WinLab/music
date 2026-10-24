@@ -96,12 +96,13 @@ const ways = [
   { as: "cut_in", label: "插播", Icon: ZapIcon, done: "插播中" },
 ] as const
 
-function AddButtons({
+/** Queue, play next or cut in one song; onAdded runs after it worked. */
+export function AddButtons({
   videoId,
-  onAdded,
+  onAdded = () => {},
 }: {
   videoId: string
-  onAdded: () => void
+  onAdded?: () => void
 }) {
   const [pending, setPending] = React.useState(false)
   return (
