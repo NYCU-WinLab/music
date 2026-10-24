@@ -195,6 +195,10 @@ export async function queuedItems(tx: Tx | typeof db = db) {
     .orderBy(asc(queueItems.sort))
 }
 
+/** Volume changes by one member within this long before their last one read as
+ * one: the level they settled on. */
+const VOLUME_RUN_MS = 60_000
+
 export async function recentActivities(limit: number) {
   const rows = await db
     .select({
@@ -202,6 +206,7 @@ export async function recentActivities(limit: number) {
       kind: activities.kind,
       detail: activities.detail,
       createdAt: activities.createdAt,
+      userId: activities.userId,
       who: user.name,
       title: tracks.title,
     })
@@ -210,6 +215,17 @@ export async function recentActivities(limit: number) {
     .leftJoin(queueItems, eq(queueItems.id, activities.itemId))
     .leftJoin(tracks, eq(tracks.videoId, queueItems.videoId))
     .orderBy(desc(activities.id))
-    .limit(limit)
-  return rows
+    // Enough to fill the page after runs of volume clicks fold up.
+    .limit(limit * 5)
+  const out: typeof rows = []
+  for (const row of rows) {
+    const last = out.at(-1)
+    const sameRun =
+      last?.kind === "volume" &&
+      row.kind === "volume" &&
+      last.userId === row.userId &&
+      last.createdAt.getTime() - row.createdAt.getTime() < VOLUME_RUN_MS
+    if (!sameRun) out.push(row)
+  }
+  return out.slice(0, limit).map((row) => ({ ...row, userId: undefined }))
 }

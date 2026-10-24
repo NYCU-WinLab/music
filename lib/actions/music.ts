@@ -77,7 +77,7 @@ export const listActivity = defineAction({
   name: "list_activity",
   title: "誰做了什麼",
   description:
-    "Recent actions, newest first: who added, cut in, skipped, removed, paused, resumed or changed the volume, with the song title and, for playlists, how many songs.",
+    "Recent actions, newest first: who added, cut in, skipped, removed, paused, resumed or changed the volume (a member's clicks within a minute show as the level they ended on), with the song title and, for playlists, how many songs.",
   kind: "query",
   input: z.object({ limit: z.number().int().min(1).max(100).default(30) }),
   run: async (_actor, { limit }) => ({
