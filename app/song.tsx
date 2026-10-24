@@ -7,6 +7,11 @@ export function duration(seconds: number | null | undefined) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
 }
 
+/** A track's length, or 直播 for a live stream, which has none. */
+export function length(seconds: number | null | undefined) {
+  return seconds ? duration(seconds) : "直播"
+}
+
 /** The cover art, square, from YouTube. */
 export function Cover({
   src,

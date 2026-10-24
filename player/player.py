@@ -93,12 +93,34 @@ async def fetch(video_id):
         out, err = await asyncio.wait_for(process.communicate(), DOWNLOAD_TIMEOUT_S)
     except asyncio.TimeoutError:
         process.kill()
+        for part in CACHE_DIR.glob(f"{video_id}.*.part"):
+            part.unlink(missing_ok=True)
         raise RuntimeError("下載逾時")
     if process.returncode != 0:
         raise RuntimeError(err.decode(errors="replace").strip().splitlines()[-1:][0] if err else "下載失敗")
     path = Path(out.decode().strip().splitlines()[-1])
     trim_cache()
     return path
+
+
+async def live_url(video_id):
+    """The address of a live stream's audio right now. A live stream has no
+    end to download to, so it plays straight from YouTube, from the live edge."""
+    process = await asyncio.create_subprocess_exec(
+        YT_DLP, "--quiet", "--no-warnings", "--no-playlist",
+        "-f", "bestaudio/best", "-g",
+        f"https://www.youtube.com/watch?v={video_id}",
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        out, err = await asyncio.wait_for(process.communicate(), 60)
+    except asyncio.TimeoutError:
+        process.kill()
+        raise RuntimeError("讀取直播逾時")
+    lines = out.decode().strip().splitlines()
+    if process.returncode != 0 or not lines:
+        raise RuntimeError(err.decode(errors="replace").strip().splitlines()[-1:][0] if err.strip() else "讀不到直播")
+    return lines[0]
 
 
 def trim_cache():
@@ -236,17 +258,24 @@ class Player:
 
     async def play(self, item, volume):
         item_id, offset = item["itemId"], float(item["startAtS"] or 0)
+        # A song has a length; a live stream (a radio channel) has none.
+        live = not item.get("durationS")
         self.state, self.offset = "loading", offset
         await self.api.report(item_id, "loading", offset)
-        try:
-            path = await fetch(item["videoId"])
-        except Exception as e:  # noqa: BLE001
-            log.warning("fetch %s: %s", item["videoId"], e)
-            self.state = "idle"
-            await self.api.report(item_id, "failed", offset, str(e) or type(e).__name__)
-            return
+        path = None
         while True:
-            ended, offset = await self.stream(item, path, offset, volume)
+            try:
+                if live:
+                    source = ["-i", await live_url(item["videoId"])]
+                else:
+                    path = path or await fetch(item["videoId"])
+                    source = ["-ss", f"{offset:.1f}", "-i", str(path)]
+            except Exception as e:  # noqa: BLE001
+                log.warning("fetch %s: %s", item["videoId"], e)
+                self.state = "idle"
+                await self.api.report(item_id, "failed", offset, str(e) or type(e).__name__)
+                return
+            ended, offset = await self.stream(item, source, offset, volume)
             if ended:
                 self.state = "idle"
                 await self.api.report(item_id, "ended", offset)
@@ -271,12 +300,12 @@ class Player:
             offset = max(0.0, offset - 1)
             log.info("resuming %s at %.0f s", item["videoId"], offset)
 
-    async def stream(self, item, path, offset, volume):
-        """Streams from offset; (True, end) when the song ran out, (False,
-        position) when another sender cut us off."""
+    async def stream(self, item, source, offset, volume):
+        """Streams ffmpeg's input source, which starts at offset; (True, end)
+        when it ran out, (False, position) when another sender cut us off."""
         # pyatv reads a plain file object, so ffmpeg runs as a plain process.
         ffmpeg = subprocess.Popen(
-            ["ffmpeg", "-v", "error", "-ss", f"{offset:.1f}", "-i", str(path),
+            ["ffmpeg", "-v", "error", *source,
              "-vn", "-ac", "2", "-ar", "44100", "-f", "mp3", "-b:a", "256k", "-"],
             stdout=subprocess.PIPE,
         )

@@ -15,7 +15,7 @@ import type { searchMusic } from "@/lib/actions/music"
 
 import { add, addList, search } from "./actions"
 import { ok } from "./ok"
-import { Cover, duration } from "./song"
+import { Cover, length } from "./song"
 
 type Found = Awaited<ReturnType<typeof searchMusic.run>>
 
@@ -71,7 +71,7 @@ export function AddSongs() {
               <div className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate">{track.title}</span>
                 <span className="truncate text-muted-foreground">
-                  {[track.artist, duration(track.durationS)]
+                  {[track.artist, length(track.durationS)]
                     .filter(Boolean)
                     .join("，")}
                 </span>
