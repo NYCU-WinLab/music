@@ -1,0 +1,406 @@
+import { and, desc, eq, inArray, isNotNull } from "drizzle-orm"
+import { z } from "zod"
+
+import { defineAction } from "@/lib/actions/define"
+import {
+  addRequester,
+  currentItem,
+  describeItems,
+  liveItemOf,
+  logActivity,
+  playerRow,
+  positionNow,
+  queuedItems,
+  recentActivities,
+  saveTracks,
+  sortKeys,
+  type Tx,
+  withQueue,
+} from "@/lib/actions/queue"
+import { db } from "@/lib/db"
+import { player, queueItems } from "@/lib/db/schema"
+import {
+  getPlaylist,
+  getTrack,
+  parseLink,
+  PLAYLIST_LIMIT,
+  searchSongs,
+} from "@/lib/youtube"
+
+/** The player counts as online when it reported within this long. */
+const ONLINE_MS = 45_000
+
+const videoId = z.string().regex(/^[\w-]{11}$/, "不是 YouTube 影片")
+const itemId = z.uuid("找不到這首")
+
+export const nowPlaying = defineAction({
+  name: "now_playing",
+  title: "正在播放",
+  description:
+    "The song playing on the lab HomePod: title, artist, who added it and how (queue, next or cut_in), everyone who asked for it, position in seconds, paused, volume (0-100) and whether the player on the lab network is online.",
+  kind: "query",
+  input: z.object({}),
+  run: async () => {
+    const state = await playerRow()
+    const [item] = await db
+      .select()
+      .from(queueItems)
+      .where(eq(queueItems.status, "playing"))
+      .limit(1)
+    const [current] = item ? await describeItems(db, [item]) : []
+    return {
+      current: current ?? null,
+      paused: state?.paused ?? false,
+      volume: state?.volume ?? 40,
+      positionS: state ? Math.round(positionNow(state) * 10) / 10 : 0,
+      state: state?.state ?? "idle",
+      error: state?.error ?? null,
+      online: Boolean(
+        state?.seenAt && Date.now() - state.seenAt.getTime() < ONLINE_MS
+      ),
+    }
+  },
+})
+
+export const listQueue = defineAction({
+  name: "list_queue",
+  title: "播放佇列",
+  description:
+    "Songs waiting to play, in order, each with who added it, how (queue, next, cut_in) and everyone who also asked for it. The playing song is not included; see now_playing.",
+  kind: "query",
+  input: z.object({}),
+  run: async () => ({ items: await describeItems(db, await queuedItems()) }),
+})
+
+export const listActivity = defineAction({
+  name: "list_activity",
+  title: "誰做了什麼",
+  description:
+    "Recent actions, newest first: who added, cut in, skipped, removed, paused, resumed or changed the volume, with the song title and, for playlists, how many songs.",
+  kind: "query",
+  input: z.object({ limit: z.number().int().min(1).max(100).default(30) }),
+  run: async (_actor, { limit }) => ({
+    activities: await recentActivities(limit),
+  }),
+})
+
+export const searchMusic = defineAction({
+  name: "search_music",
+  title: "搜尋歌曲",
+  description:
+    "Search YouTube Music for songs, or resolve a pasted YouTube / YouTube Music link. A song link returns that song; a playlist link returns the playlist (id, title, song count) and its first songs. Add results with add_song or add_playlist.",
+  kind: "query",
+  input: z.object({
+    query: z.string().trim().min(1, "輸入歌名或連結").max(300),
+  }),
+  run: async (_actor, { query }) => {
+    const link = parseLink(query)
+    if (link?.kind === "video")
+      return { tracks: [await getTrack(link.videoId)], playlist: null }
+    if (link?.kind === "playlist") {
+      const list = await getPlaylist(link.playlistId)
+      return {
+        tracks: list.tracks.slice(0, 20),
+        playlist: {
+          id: link.playlistId,
+          title: list.title,
+          count: list.tracks.length,
+        },
+      }
+    }
+    return { tracks: await searchSongs(query), playlist: null }
+  },
+})
+
+export const addSong = defineAction({
+  name: "add_song",
+  title: "點歌",
+  description:
+    "Queue a song by YouTube video id. as=queue adds it at the end, as=next plays it after the current song, as=cut_in plays it now and puts the current song back at the front to resume later. A song already waiting gets this member as one more requester instead of a second copy (next also moves it to the front).",
+  kind: "mutation",
+  input: z.object({
+    videoId,
+    as: z.enum(["queue", "next", "cut_in"]).default("queue"),
+  }),
+  run: async (actor, input) => {
+    const track = await getTrack(input.videoId)
+    return withQueue(async (tx) => {
+      await saveTracks(tx, [track])
+      const keys = await sortKeys(tx)
+      const existing = await liveItemOf(tx, input.videoId)
+      if (existing) {
+        await addRequester(tx, existing.id, actor.userId)
+        if (existing.status === "queued" && input.as !== "queue") {
+          await tx
+            .update(queueItems)
+            .set({ sort: keys.front })
+            .where(eq(queueItems.id, existing.id))
+          if (input.as === "cut_in") await cutIn(tx, existing.id)
+        }
+        await logActivity(tx, {
+          userId: actor.userId,
+          kind: input.as === "queue" ? "also" : input.as,
+          itemId: existing.id,
+        })
+        return { itemId: existing.id, already: true }
+      }
+      const [item] = await tx
+        .insert(queueItems)
+        .values({
+          videoId: input.videoId,
+          sort: input.as === "queue" ? keys.end : keys.front,
+          addedBy: actor.userId,
+          addedAs: input.as,
+        })
+        .returning({ id: queueItems.id })
+      await addRequester(tx, item.id, actor.userId)
+      if (input.as === "cut_in") await cutIn(tx, item.id)
+      await logActivity(tx, {
+        userId: actor.userId,
+        kind: input.as === "queue" ? "add" : input.as,
+        itemId: item.id,
+      })
+      return { itemId: item.id, already: false }
+    })
+  },
+})
+
+// Plays the item now: the current song goes back to the front of the queue
+// and will resume where it was.
+async function cutIn(tx: Tx, id: string) {
+  const playing = await currentItem(tx)
+  if (playing?.id === id) return
+  const state = await playerRow(tx)
+  const { front } = await sortKeys(tx)
+  if (playing)
+    await tx
+      .update(queueItems)
+      .set({
+        status: "queued",
+        sort: front,
+        resumeAtS: state ? Math.max(0, positionNow(state) - 2) : 0,
+      })
+      .where(eq(queueItems.id, playing.id))
+  await tx
+    .update(queueItems)
+    .set({ status: "playing", startedAt: new Date(), sort: front - 1 })
+    .where(eq(queueItems.id, id))
+  await tx
+    .update(player)
+    .set({
+      positionS: 0,
+      positionAt: null,
+      state: "loading",
+      error: null,
+      paused: false,
+    })
+    .where(eq(player.id, 1))
+}
+
+export const addPlaylist = defineAction({
+  name: "add_playlist",
+  title: "加入歌單",
+  description: `Queue every song of a YouTube or YouTube Music playlist (link or id) at the end, at most ${PLAYLIST_LIMIT}. Songs already waiting get this member as a requester instead of a copy.`,
+  kind: "mutation",
+  input: z.object({ playlist: z.string().trim().min(1).max(300) }),
+  run: async (actor, input) => {
+    const link = parseLink(input.playlist)
+    const playlistId =
+      link?.kind === "playlist"
+        ? link.playlistId
+        : /^[\w-]{10,}$/.test(input.playlist)
+          ? input.playlist
+          : null
+    if (!playlistId) throw new Error("不是 YouTube 歌單連結")
+    const list = await getPlaylist(playlistId)
+    if (!list.tracks.length) throw new Error("這個歌單是空的或看不到")
+    return withQueue(async (tx) => {
+      await saveTracks(tx, list.tracks)
+      let { end } = await sortKeys(tx)
+      let added = 0
+      for (const track of list.tracks) {
+        const existing = await liveItemOf(tx, track.videoId)
+        if (existing) {
+          await addRequester(tx, existing.id, actor.userId)
+          continue
+        }
+        const [item] = await tx
+          .insert(queueItems)
+          .values({
+            videoId: track.videoId,
+            sort: end++,
+            addedBy: actor.userId,
+            playlistId,
+          })
+          .returning({ id: queueItems.id })
+        await addRequester(tx, item.id, actor.userId)
+        added++
+      }
+      await logActivity(tx, {
+        userId: actor.userId,
+        kind: "playlist",
+        detail: { count: added, title: list.title },
+      })
+      return { added, total: list.tracks.length, title: list.title }
+    })
+  },
+})
+
+export const wantToo = defineAction({
+  name: "want_too",
+  title: "我也想聽",
+  description:
+    "Add the signed-in member as one more requester of a waiting or playing song (by queue item id), so everyone sees who wants it.",
+  kind: "mutation",
+  input: z.object({ itemId }),
+  run: async (actor, { itemId: id }) =>
+    withQueue(async (tx) => {
+      const [item] = await tx
+        .select()
+        .from(queueItems)
+        .where(
+          and(
+            eq(queueItems.id, id),
+            inArray(queueItems.status, ["queued", "playing"])
+          )
+        )
+      if (!item) throw new Error("這首已經不在佇列裡")
+      if (await addRequester(tx, id, actor.userId))
+        await logActivity(tx, {
+          userId: actor.userId,
+          kind: "also",
+          itemId: id,
+        })
+      return { ok: true }
+    }),
+})
+
+export const playNext = defineAction({
+  name: "play_next",
+  title: "下一首播",
+  description:
+    "Move a waiting song (by queue item id) to the front, so it plays right after the current one.",
+  kind: "mutation",
+  input: z.object({ itemId }),
+  run: async (actor, { itemId: id }) =>
+    withQueue(async (tx) => {
+      const { front } = await sortKeys(tx)
+      const moved = await tx
+        .update(queueItems)
+        .set({ sort: front })
+        .where(and(eq(queueItems.id, id), eq(queueItems.status, "queued")))
+        .returning({ id: queueItems.id })
+      if (!moved.length) throw new Error("這首已經不在佇列裡")
+      await logActivity(tx, { userId: actor.userId, kind: "next", itemId: id })
+      return { ok: true }
+    }),
+})
+
+export const skipSong = defineAction({
+  name: "skip_song",
+  title: "跳過",
+  description:
+    "Skip the playing song; the next waiting song starts. Pass the playing item's id so a late click cannot skip the song after it.",
+  kind: "mutation",
+  input: z.object({ itemId }),
+  run: async (actor, { itemId: id }) =>
+    withQueue(async (tx) => {
+      const skipped = await tx
+        .update(queueItems)
+        .set({ status: "skipped", endedAt: new Date(), endedBy: actor.userId })
+        .where(and(eq(queueItems.id, id), eq(queueItems.status, "playing")))
+        .returning({ id: queueItems.id })
+      if (!skipped.length) throw new Error("這首已經播完了")
+      await logActivity(tx, { userId: actor.userId, kind: "skip", itemId: id })
+      return { ok: true }
+    }),
+})
+
+export const removeSong = defineAction({
+  name: "remove_song",
+  title: "移出佇列",
+  description: "Take a waiting song (by queue item id) out of the queue.",
+  kind: "mutation",
+  input: z.object({ itemId }),
+  run: async (actor, { itemId: id }) =>
+    withQueue(async (tx) => {
+      const removed = await tx
+        .update(queueItems)
+        .set({ status: "removed", endedAt: new Date(), endedBy: actor.userId })
+        .where(and(eq(queueItems.id, id), eq(queueItems.status, "queued")))
+        .returning({ id: queueItems.id })
+      if (!removed.length) throw new Error("這首已經不在佇列裡")
+      await logActivity(tx, {
+        userId: actor.userId,
+        kind: "remove",
+        itemId: id,
+      })
+      return { ok: true }
+    }),
+})
+
+export const setPaused = defineAction({
+  name: "set_paused",
+  title: "暫停或繼續",
+  description:
+    "Pause (paused=true) or resume (paused=false) the music on the lab HomePod. Resuming continues the song where it stopped.",
+  kind: "mutation",
+  input: z.object({ paused: z.boolean() }),
+  run: async (actor, { paused }) =>
+    withQueue(async (tx) => {
+      const state = await playerRow(tx)
+      if (state?.paused === paused) return { paused }
+      const playing = await currentItem(tx)
+      if (paused && playing && state)
+        await tx
+          .update(queueItems)
+          .set({ resumeAtS: positionNow(state) })
+          .where(eq(queueItems.id, playing.id))
+      await tx
+        .update(player)
+        .set({ paused, error: null })
+        .where(eq(player.id, 1))
+      await logActivity(tx, {
+        userId: actor.userId,
+        kind: paused ? "pause" : "resume",
+        itemId: playing?.id,
+      })
+      return { paused }
+    }),
+})
+
+export const setVolume = defineAction({
+  name: "set_volume",
+  title: "調音量",
+  description: "Set the lab HomePod's volume for the music, 0 to 100.",
+  kind: "mutation",
+  input: z.object({ volume: z.number().int().min(0).max(100) }),
+  run: async (actor, { volume }) =>
+    withQueue(async (tx) => {
+      await tx.update(player).set({ volume }).where(eq(player.id, 1))
+      await logActivity(tx, {
+        userId: actor.userId,
+        kind: "volume",
+        detail: { volume },
+      })
+      return { volume }
+    }),
+})
+
+export const listPlayed = defineAction({
+  name: "list_played",
+  title: "播過的歌",
+  description:
+    "Songs that finished, were skipped or removed, newest first, with who added and who skipped or removed them.",
+  kind: "query",
+  input: z.object({ limit: z.number().int().min(1).max(100).default(30) }),
+  run: async (_actor, { limit }) => {
+    const items = await db
+      .select()
+      .from(queueItems)
+      .where(isNotNull(queueItems.endedAt))
+      .orderBy(desc(queueItems.endedAt))
+      .limit(limit)
+    return { items: await describeItems(db, items) }
+  },
+})

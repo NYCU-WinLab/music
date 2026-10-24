@@ -1,0 +1,131 @@
+import { sql } from "drizzle-orm"
+import {
+  bigserial,
+  boolean,
+  doublePrecision,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  primaryKey,
+  real,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core"
+
+import { user } from "@/lib/db/auth-schema"
+
+// A YouTube video as the lab knows it: what the queue shows and what the
+// player asks YouTube for. One row per video, however often it is queued.
+export const tracks = pgTable("tracks", {
+  videoId: text().primaryKey(),
+  title: text().notNull(),
+  artist: text().notNull().default(""),
+  durationS: integer(),
+  thumbnail: text(),
+  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+})
+
+// One play of a track. queued items play in sort order; one item at most is
+// playing. A cut-in sends the playing item back to the front with resumeAtS,
+// so nobody loses their song.
+export const queueItems = pgTable(
+  "queue_items",
+  {
+    id: uuid().defaultRandom().primaryKey(),
+    videoId: text()
+      .notNull()
+      .references(() => tracks.videoId),
+    status: text({ enum: ["queued", "playing", "done", "skipped", "removed"] })
+      .notNull()
+      .default("queued"),
+    sort: doublePrecision().notNull(),
+    addedBy: uuid().references(() => user.id, { onDelete: "set null" }),
+    // How it entered: queue (the end), next (the front), cut_in (at once).
+    addedAs: text({ enum: ["queue", "next", "cut_in"] })
+      .notNull()
+      .default("queue"),
+    // The playlist link it came from, when it came with others.
+    playlistId: text(),
+    resumeAtS: real().notNull().default(0),
+    startedAt: timestamp({ withTimezone: true }),
+    endedAt: timestamp({ withTimezone: true }),
+    endedBy: uuid().references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("queue_items_status_sort").on(table.status, table.sort),
+    index("queue_items_ended").on(table.endedAt),
+  ]
+)
+
+// Who wants a queued item: the member who added it, then everyone who asked
+// for the same song while it waited.
+export const queueRequests = pgTable(
+  "queue_requests",
+  {
+    itemId: uuid()
+      .notNull()
+      .references(() => queueItems.id, { onDelete: "cascade" }),
+    userId: uuid()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.itemId, table.userId] })]
+)
+
+// What happened, newest first on the page: who added, cut in, skipped,
+// paused or turned the volume. detail holds counts, levels and playlist titles
+// from YouTube, never text
+// a member typed.
+export const activities = pgTable(
+  "activities",
+  {
+    id: bigserial({ mode: "number" }).primaryKey(),
+    userId: uuid().references(() => user.id, { onDelete: "set null" }),
+    kind: text({
+      enum: [
+        "add",
+        "next",
+        "cut_in",
+        "playlist",
+        "also",
+        "skip",
+        "remove",
+        "pause",
+        "resume",
+        "volume",
+      ],
+    }).notNull(),
+    itemId: uuid().references(() => queueItems.id, { onDelete: "set null" }),
+    detail: jsonb().$type<{
+      count?: number
+      volume?: number
+      title?: string
+    }>(),
+    createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [index("activities_created").on(table.createdAt)]
+)
+
+// The one player (row id 1): what members asked for (paused, volume) and
+// what the player on the lab network last reported.
+export const player = pgTable("player", {
+  id: integer().primaryKey().default(1),
+  paused: boolean().notNull().default(false),
+  volume: real().notNull().default(40),
+  // Bumped on every change the player must follow; it long-polls on it.
+  version: integer().notNull().default(0),
+  positionS: real().notNull().default(0),
+  positionAt: timestamp({ withTimezone: true }),
+  state: text({ enum: ["idle", "loading", "playing", "waiting", "error"] })
+    .notNull()
+    .default("idle"),
+  error: text(),
+  seenAt: timestamp({ withTimezone: true }),
+  updatedAt: timestamp({ withTimezone: true })
+    .default(sql`now()`)
+    .notNull(),
+})
