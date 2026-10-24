@@ -5,6 +5,7 @@ import { runAction } from "@/lib/actions/define"
 import { listPlayed } from "@/lib/actions/music"
 import { requireActor } from "@/lib/auth/session"
 
+import { AddButtons } from "../add-songs"
 import { addedAsLabel, Cover } from "../song"
 
 export const dynamic = "force-dynamic"
@@ -52,9 +53,10 @@ export default async function Played() {
                       {how && `，${item.endedBy ?? "播放器"}${how}`}
                     </span>
                   </div>
-                  <span className="shrink-0 text-muted-foreground tabular-nums">
+                  <span className="hidden shrink-0 text-muted-foreground tabular-nums sm:inline">
                     {item.endedAt ? time.format(item.endedAt) : ""}
                   </span>
+                  <AddButtons videoId={item.track.videoId} />
                 </li>
               )
             })}
