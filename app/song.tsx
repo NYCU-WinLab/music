@@ -44,12 +44,13 @@ export const addedAsLabel = {
   auto: "自動推薦",
 } as const
 
-/** Who brought a song and how: "小明點播", "小明的歌單", "自動推薦". */
+/** Who brought a song and how: "小明 點播", "小明 的歌單", "自動推薦". A
+ * space keeps the name apart from the words after it. */
 export function addedLine(item: {
   addedAs: keyof typeof addedAsLabel
   addedBy: string | null
   fromPlaylist: boolean
 }) {
   if (item.addedAs === "auto") return addedAsLabel.auto
-  return `${item.addedBy ?? "有人"}${item.fromPlaylist ? "的歌單" : addedAsLabel[item.addedAs]}`
+  return `${item.addedBy ?? "有人"} ${item.fromPlaylist ? "的歌單" : addedAsLabel[item.addedAs]}`
 }
