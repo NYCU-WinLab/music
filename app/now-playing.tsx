@@ -161,8 +161,12 @@ function Elapsed({
 function Volume({ initial }: { initial: number }) {
   const [level, setLevel] = React.useState(initial)
   const timer = React.useRef<ReturnType<typeof setTimeout>>(undefined)
+  // Clicks faster than a render each count: they step from the last level
+  // asked for, not the one on screen.
+  const latest = React.useRef(initial)
   const change = (delta: number) => {
-    const next = Math.min(100, Math.max(0, level + delta))
+    const next = Math.min(100, Math.max(0, latest.current + delta))
+    latest.current = next
     setLevel(next)
     clearTimeout(timer.current)
     timer.current = setTimeout(async () => {
