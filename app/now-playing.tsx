@@ -49,40 +49,32 @@ export function NowPlaying({ playing }: { playing: Playing }) {
 
   return (
     <section aria-label="正在播放" className="flex flex-col gap-6">
-      {current ? (
-        <div className="flex items-center gap-6">
-          <Cover src={current.track.thumbnail} className="size-24" />
-          <div className="flex min-w-0 flex-col gap-1">
-            <h1 className="truncate text-title font-medium">
-              {current.track.title}
-            </h1>
-            <p className="truncate text-muted-foreground">
-              {current.track.artist}
-            </p>
-            <p className="flex flex-wrap items-center gap-2 text-muted-foreground">
-              {current.addedAs === "cut_in" && <Badge>插播</Badge>}
-              <span>{addedLine(current)}</span>
-            </p>
-          </div>
+      {/* Every part keeps its place whether a song plays or not, so the
+          controls never move under a finger. */}
+      <div className="flex items-center gap-6">
+        <Cover src={current?.track.thumbnail ?? null} className="size-24" />
+        <div className="flex min-w-0 flex-col gap-1">
+          <h1 className="truncate text-title font-medium">
+            {current?.track.title ?? "還沒有歌，點一首吧"}
+          </h1>
+          <p className="truncate text-muted-foreground">
+            {current?.track.artist || "\u00a0"}
+          </p>
+          <p className="flex h-6 items-center gap-2 truncate text-muted-foreground">
+            {current?.addedAs === "cut_in" && <Badge>插播</Badge>}
+            {current && <span className="truncate">{addedLine(current)}</span>}
+          </p>
         </div>
-      ) : (
-        <h1 className="text-title font-medium">還沒有歌，點一首吧</h1>
-      )}
+      </div>
 
-      {current && !current.track.durationS && (
-        <div>
-          <Badge variant="muted">直播</Badge>
-        </div>
-      )}
-
-      {!!current?.track.durationS && (
-        <Elapsed
-          key={`${current.id}:${playing.positionS}:${playing.state}:${playing.paused}`}
-          positionS={playing.positionS}
-          running={playing.state === "playing" && !playing.paused}
-          total={current.track.durationS}
-        />
-      )}
+      <Elapsed
+        key={`${current?.id}:${playing.positionS}:${playing.state}:${playing.paused}`}
+        positionS={current ? playing.positionS : 0}
+        running={!!current && playing.state === "playing" && !playing.paused}
+        total={current?.track.durationS ?? null}
+        live={!!current && !current.track.durationS}
+        note={note}
+      />
 
       <div className="flex flex-wrap items-center gap-3">
         <Button
@@ -110,23 +102,27 @@ export function NowPlaying({ playing }: { playing: Playing }) {
           />
           自動推薦
         </label>
-        {note && <span className="text-muted-foreground">{note}</span>}
       </div>
     </section>
   )
 }
 
-// The bar and the times. Keyed by the server's figure, so each refresh
-// starts it again from there; between refreshes it counts on its own while
-// the HomePod plays.
+// The bar and the times, with the player's state between them. Keyed by
+// the server's figure, so each refresh starts it again from there; between
+// refreshes it counts on its own while the HomePod plays. A live stream has
+// no end: the bar stays full and 直播 takes the place of the length.
 function Elapsed({
   positionS,
   running,
   total,
+  live,
+  note,
 }: {
   positionS: number
   running: boolean
   total: number | null
+  live: boolean
+  note: string | null
 }) {
   const [from] = React.useState(() => Date.now())
   const [now, setNow] = React.useState(from)
@@ -142,11 +138,12 @@ function Elapsed({
     <div className="flex flex-col gap-2">
       <Progress
         aria-label="播放進度"
-        value={total ? Math.min(100, (position / total) * 100) : null}
+        value={live ? 100 : total ? Math.min(100, (position / total) * 100) : 0}
       />
-      <div className="flex justify-between text-muted-foreground tabular-nums">
-        <span>{duration(position)}</span>
-        <span>{duration(total)}</span>
+      <div className="grid grid-cols-3 text-muted-foreground tabular-nums">
+        <span>{total || live ? duration(position) : "\u00a0"}</span>
+        <span className="truncate text-center">{note}</span>
+        <span className="text-right">{live ? "直播" : duration(total)}</span>
       </div>
     </div>
   )
@@ -186,7 +183,9 @@ function Volume({ initial }: { initial: number }) {
         </TooltipTrigger>
         <TooltipContent>小聲一點</TooltipContent>
       </Tooltip>
-      <span className="w-20 text-center tabular-nums">音量 {level}</span>
+      <span className="w-20 shrink-0 text-center tabular-nums">
+        音量 {level}
+      </span>
       <Tooltip>
         <TooltipTrigger
           render={
