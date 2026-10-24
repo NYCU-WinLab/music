@@ -15,7 +15,7 @@
 
 [![CI](https://github.com/NYCU-WinLab/music/actions/workflows/ci.yml/badge.svg)](https://github.com/NYCU-WinLab/music/actions) &nbsp;[![Image](https://img.shields.io/badge/image-ghcr.io%2Fnycu--winlab%2Fmusic-111111)](https://github.com/NYCU-WinLab/music/pkgs/container/music) &nbsp;[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](#license)
 
-Any device with a browser can put a song on the lab speaker, whether it speaks AirPlay, Google Cast or neither. Everyone sees the same queue live: who added each song, who cut in, who else wants it, and who skipped it.
+Any device with a browser can put a song on the lab speaker, whether it speaks AirPlay, Google Cast or neither. Everyone sees the same queue live: who added each song, who cut in, and who skipped it.
 
 ```
 > "Play アイドル after this song"
@@ -28,7 +28,7 @@ Any device with a browser can put a song on the lab speaker, whether it speaks A
 
 - **Searches YouTube Music** for songs as you type, and takes pasted song or playlist links from YouTube or YouTube Music.
 - **Queues three ways**: at the end, next, or cut in now (the cut song goes back to the front and resumes where it was).
-- **Shows who**: who added each song, everyone who also wants it, and a feed of who added, cut in, skipped, paused or changed the volume.
+- **Shows who**: who added each song, and a feed of who added, cut in, skipped, paused or changed the volume.
 - **Adds playlists**: up to 200 songs from one link.
 - **Shares one set of controls**: pause, skip and volume act for everyone.
 - **Gets out of the door greeting's way**: when another AirPlay sender takes the HomePod, the player waits until it is quiet and resumes.

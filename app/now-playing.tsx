@@ -19,9 +19,9 @@ import {
 } from "@/components/ui/tooltip"
 import type { nowPlaying } from "@/lib/actions/music"
 
-import { alsoWant, pause, skip, volume } from "./actions"
+import { pause, skip, volume } from "./actions"
 import { ok } from "./ok"
-import { addedAsLabel, Cover, duration, people } from "./song"
+import { addedAsLabel, Cover, duration } from "./song"
 
 type Playing = Awaited<ReturnType<typeof nowPlaying.run>>
 
@@ -33,11 +33,10 @@ const stateLabel = {
   error: "播放失敗",
 } as const
 
-// The song on the HomePod: who wanted it, how far it is, and the controls
+// The song on the HomePod: who added it, how far it is, and the controls
 // everyone shares. The bar moves on its own between reports.
-export function NowPlaying({ playing, me }: { playing: Playing; me: string }) {
+export function NowPlaying({ playing }: { playing: Playing }) {
   const { current } = playing
-  const wanted = current?.requesters.some((r) => r.userId === me) ?? false
 
   const note = !playing.online
     ? "播放器離線"
@@ -64,12 +63,6 @@ export function NowPlaying({ playing, me }: { playing: Playing; me: string }) {
               <span>
                 {current.addedBy ?? "有人"}
                 {addedAsLabel[current.addedAs]}
-                {current.requesters.length > 1 &&
-                  `，${people(
-                    current.requesters
-                      .filter((r) => r.name !== current.addedBy)
-                      .map((r) => r.name)
-                  )} 也想聽`}
               </span>
             </p>
           </div>
@@ -111,14 +104,6 @@ export function NowPlaying({ playing, me }: { playing: Playing; me: string }) {
           <SkipForwardIcon />
           跳過
         </Button>
-        {current && !wanted && (
-          <Button
-            variant="outline"
-            onClick={async () => ok(await alsoWant({ itemId: current.id }))}
-          >
-            我也想聽
-          </Button>
-        )}
         <Volume key={playing.volume} initial={playing.volume} />
         {note && <span className="text-muted-foreground">{note}</span>}
       </div>

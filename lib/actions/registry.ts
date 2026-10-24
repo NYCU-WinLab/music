@@ -12,7 +12,6 @@ import {
   setPaused,
   setVolume,
   skipSong,
-  wantToo,
 } from "@/lib/actions/music"
 import { whoami } from "@/lib/actions/users"
 
@@ -26,7 +25,6 @@ export const actions: Action[] = [
   searchMusic,
   addSong,
   addPlaylist,
-  wantToo,
   playNext,
   skipSong,
   removeSong,

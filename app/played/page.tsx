@@ -5,7 +5,7 @@ import { runAction } from "@/lib/actions/define"
 import { listPlayed } from "@/lib/actions/music"
 import { requireActor } from "@/lib/auth/session"
 
-import { addedAsLabel, Cover, people } from "../song"
+import { addedAsLabel, Cover } from "../song"
 
 export const dynamic = "force-dynamic"
 
@@ -49,8 +49,6 @@ export default async function Played() {
                       {item.fromPlaylist
                         ? "的歌單"
                         : addedAsLabel[item.addedAs]}
-                      {item.requesters.length > 1 &&
-                        `，${people(item.requesters.map((r) => r.name))} 想聽`}
                       {how && `，${item.endedBy ?? "播放器"}${how}`}
                     </span>
                   </div>

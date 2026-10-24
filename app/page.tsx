@@ -20,9 +20,9 @@ export default async function Home() {
   return (
     <MusicShell>
       <div className="flex flex-col gap-12">
-        <NowPlaying playing={playing} me={actor.userId} />
+        <NowPlaying playing={playing} />
         <AddSongs />
-        <Queue items={queue.items} me={actor.userId} />
+        <Queue items={queue.items} />
         <Activity activities={activity.activities} />
       </div>
     </MusicShell>

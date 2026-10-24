@@ -120,9 +120,7 @@ function AddButtons({
                   const result = await add({ videoId, as })
                   setPending(false)
                   if (!ok(result)) return
-                  toast.success(
-                    result.data!.already ? "已經在佇列裡，算你一票" : done
-                  )
+                  toast.success(result.data!.already ? "已經在佇列裡" : done)
                   onAdded()
                 }}
               />
