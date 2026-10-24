@@ -12,7 +12,6 @@ import {
   setPaused,
   setVolume,
   skipSong,
-  wantToo,
 } from "@/lib/actions/music"
 import { requireActor } from "@/lib/auth/session"
 
@@ -36,7 +35,6 @@ async function call<Input extends z.ZodObject, Output>(
 export const search = async (input: unknown) => call(searchMusic, input)
 export const add = async (input: unknown) => call(addSong, input)
 export const addList = async (input: unknown) => call(addPlaylist, input)
-export const alsoWant = async (input: unknown) => call(wantToo, input)
 export const next = async (input: unknown) => call(playNext, input)
 export const skip = async (input: unknown) => call(skipSong, input)
 export const remove = async (input: unknown) => call(removeSong, input)

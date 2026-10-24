@@ -1,9 +1,8 @@
-import { and, desc, eq, inArray, isNotNull } from "drizzle-orm"
+import { and, desc, eq, isNotNull } from "drizzle-orm"
 import { z } from "zod"
 
 import { defineAction } from "@/lib/actions/define"
 import {
-  addRequester,
   currentItem,
   describeItems,
   liveItemOf,
@@ -37,7 +36,7 @@ export const nowPlaying = defineAction({
   name: "now_playing",
   title: "正在播放",
   description:
-    "The song playing on the lab HomePod: title, artist, who added it and how (queue, next or cut_in), everyone who asked for it, position in seconds, paused, volume (0-100) and whether the player on the lab network is online.",
+    "The song playing on the lab HomePod: title, artist, who added it and how (queue, next or cut_in), position in seconds, paused, volume (0-100) and whether the player on the lab network is online.",
   kind: "query",
   input: z.object({}),
   run: async () => {
@@ -66,7 +65,7 @@ export const listQueue = defineAction({
   name: "list_queue",
   title: "播放佇列",
   description:
-    "Songs waiting to play, in order, each with who added it, how (queue, next, cut_in) and everyone who also asked for it. The playing song is not included; see now_playing.",
+    "Songs waiting to play, in order, each with who added it and how (queue, next, cut_in). The playing song is not included; see now_playing.",
   kind: "query",
   input: z.object({}),
   run: async () => ({ items: await describeItems(db, await queuedItems()) }),
@@ -116,7 +115,7 @@ export const addSong = defineAction({
   name: "add_song",
   title: "點歌",
   description:
-    "Queue a song by YouTube video id. as=queue adds it at the end, as=next plays it after the current song, as=cut_in plays it now and puts the current song back at the front to resume later. A song already waiting gets this member as one more requester instead of a second copy (next also moves it to the front).",
+    "Queue a song by YouTube video id. as=queue adds it at the end, as=next plays it after the current song, as=cut_in plays it now and puts the current song back at the front to resume later. A song already in the queue is not added twice: queue leaves it where it is, next moves it to the front, cut_in plays it now.",
   kind: "mutation",
   input: z.object({
     videoId,
@@ -129,8 +128,8 @@ export const addSong = defineAction({
       const keys = await sortKeys(tx)
       const existing = await liveItemOf(tx, input.videoId)
       if (existing) {
-        await addRequester(tx, existing.id, actor.userId)
-        if (existing.status === "queued" && input.as !== "queue") {
+        if (input.as === "queue") return { itemId: existing.id, already: true }
+        if (existing.status === "queued") {
           await tx
             .update(queueItems)
             .set({ sort: keys.front })
@@ -139,7 +138,7 @@ export const addSong = defineAction({
         }
         await logActivity(tx, {
           userId: actor.userId,
-          kind: input.as === "queue" ? "also" : input.as,
+          kind: input.as,
           itemId: existing.id,
         })
         return { itemId: existing.id, already: true }
@@ -153,7 +152,6 @@ export const addSong = defineAction({
           addedAs: input.as,
         })
         .returning({ id: queueItems.id })
-      await addRequester(tx, item.id, actor.userId)
       if (input.as === "cut_in") await cutIn(tx, item.id)
       await logActivity(tx, {
         userId: actor.userId,
@@ -200,7 +198,7 @@ async function cutIn(tx: Tx, id: string) {
 export const addPlaylist = defineAction({
   name: "add_playlist",
   title: "加入歌單",
-  description: `Queue every song of a YouTube or YouTube Music playlist (link or id) at the end, at most ${PLAYLIST_LIMIT}. Songs already waiting get this member as a requester instead of a copy.`,
+  description: `Queue every song of a YouTube or YouTube Music playlist (link or id) at the end, at most ${PLAYLIST_LIMIT}. Songs already in the queue are skipped.`,
   kind: "mutation",
   input: z.object({ playlist: z.string().trim().min(1).max(300) }),
   run: async (actor, input) => {
@@ -219,21 +217,13 @@ export const addPlaylist = defineAction({
       let { end } = await sortKeys(tx)
       let added = 0
       for (const track of list.tracks) {
-        const existing = await liveItemOf(tx, track.videoId)
-        if (existing) {
-          await addRequester(tx, existing.id, actor.userId)
-          continue
-        }
-        const [item] = await tx
-          .insert(queueItems)
-          .values({
-            videoId: track.videoId,
-            sort: end++,
-            addedBy: actor.userId,
-            playlistId,
-          })
-          .returning({ id: queueItems.id })
-        await addRequester(tx, item.id, actor.userId)
+        if (await liveItemOf(tx, track.videoId)) continue
+        await tx.insert(queueItems).values({
+          videoId: track.videoId,
+          sort: end++,
+          addedBy: actor.userId,
+          playlistId,
+        })
         added++
       }
       await logActivity(tx, {
@@ -244,35 +234,6 @@ export const addPlaylist = defineAction({
       return { added, total: list.tracks.length, title: list.title }
     })
   },
-})
-
-export const wantToo = defineAction({
-  name: "want_too",
-  title: "我也想聽",
-  description:
-    "Add the signed-in member as one more requester of a waiting or playing song (by queue item id), so everyone sees who wants it.",
-  kind: "mutation",
-  input: z.object({ itemId }),
-  run: async (actor, { itemId: id }) =>
-    withQueue(async (tx) => {
-      const [item] = await tx
-        .select()
-        .from(queueItems)
-        .where(
-          and(
-            eq(queueItems.id, id),
-            inArray(queueItems.status, ["queued", "playing"])
-          )
-        )
-      if (!item) throw new Error("這首已經不在佇列裡")
-      if (await addRequester(tx, id, actor.userId))
-        await logActivity(tx, {
-          userId: actor.userId,
-          kind: "also",
-          itemId: id,
-        })
-      return { ok: true }
-    }),
 })
 
 export const playNext = defineAction({

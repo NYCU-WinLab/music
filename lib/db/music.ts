@@ -7,7 +7,6 @@ import {
   integer,
   jsonb,
   pgTable,
-  primaryKey,
   real,
   text,
   timestamp,
@@ -60,22 +59,6 @@ export const queueItems = pgTable(
   ]
 )
 
-// Who wants a queued item: the member who added it, then everyone who asked
-// for the same song while it waited.
-export const queueRequests = pgTable(
-  "queue_requests",
-  {
-    itemId: uuid()
-      .notNull()
-      .references(() => queueItems.id, { onDelete: "cascade" }),
-    userId: uuid()
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [primaryKey({ columns: [table.itemId, table.userId] })]
-)
-
 // What happened, newest first on the page: who added, cut in, skipped,
 // paused or turned the volume. detail holds counts, levels and playlist titles
 // from YouTube, never text
@@ -91,7 +74,6 @@ export const activities = pgTable(
         "next",
         "cut_in",
         "playlist",
-        "also",
         "skip",
         "remove",
         "pause",

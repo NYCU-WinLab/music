@@ -4,14 +4,7 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm"
 
 import { db } from "@/lib/db"
-import {
-  activities,
-  player,
-  queueItems,
-  queueRequests,
-  tracks,
-  user,
-} from "@/lib/db/schema"
+import { activities, player, queueItems, tracks, user } from "@/lib/db/schema"
 import type { Track } from "@/lib/youtube"
 
 export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
@@ -124,16 +117,6 @@ export async function liveItemOf(tx: Tx, videoId: string) {
   return item ?? null
 }
 
-/** Adds the member to the item's requesters; false when already there. */
-export async function addRequester(tx: Tx, itemId: string, userId: string) {
-  const added = await tx
-    .insert(queueRequests)
-    .values({ itemId, userId })
-    .onConflictDoNothing()
-    .returning({ itemId: queueRequests.itemId })
-  return added.length > 0
-}
-
 export async function logActivity(
   tx: Tx,
   entry: typeof activities.$inferInsert
@@ -141,14 +124,13 @@ export async function logActivity(
   await tx.insert(activities).values(entry)
 }
 
-/** Items with their song, who added them and everyone who wants them. */
+/** Items with their song and who added, skipped or removed them. */
 export async function describeItems(
   tx: Tx | typeof db,
   items: (typeof queueItems.$inferSelect)[]
 ) {
   if (!items.length) return []
-  const ids = items.map((item) => item.id)
-  const [songs, requesters, people] = await Promise.all([
+  const [songs, people] = await Promise.all([
     tx
       .select()
       .from(tracks)
@@ -158,16 +140,6 @@ export async function describeItems(
           items.map((item) => item.videoId)
         )
       ),
-    tx
-      .select({
-        itemId: queueRequests.itemId,
-        name: user.name,
-        userId: user.id,
-      })
-      .from(queueRequests)
-      .innerJoin(user, eq(user.id, queueRequests.userId))
-      .where(inArray(queueRequests.itemId, ids))
-      .orderBy(asc(queueRequests.createdAt)),
     tx
       .select({ id: user.id, name: user.name })
       .from(user)
@@ -192,9 +164,6 @@ export async function describeItems(
     track: song.get(item.videoId)!,
     addedBy: item.addedBy ? (name.get(item.addedBy) ?? null) : null,
     endedBy: item.endedBy ? (name.get(item.endedBy) ?? null) : null,
-    requesters: requesters
-      .filter((r) => r.itemId === item.id)
-      .map((r) => ({ userId: r.userId, name: r.name })),
     startedAt: item.startedAt,
     endedAt: item.endedAt,
   }))

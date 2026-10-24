@@ -37,12 +37,6 @@ export function Cover({
   )
 }
 
-/** "小明" / "小明、小華" / "小明、小華 等 5 人" */
-export function people(names: string[]) {
-  if (names.length <= 3) return names.join("、")
-  return `${names.slice(0, 3).join("、")} 等 ${names.length} 人`
-}
-
 export const addedAsLabel = {
   queue: "點播",
   next: "排下一首",

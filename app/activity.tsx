@@ -20,8 +20,6 @@ function sentence(entry: Entry) {
       return `把${song}排到下一首`
     case "cut_in":
       return `插播${song}`
-    case "also":
-      return `也想聽${song}`
     case "playlist":
       return `加入歌單〈${entry.detail?.title ?? ""}〉${entry.detail?.count ?? 0} 首`
     case "skip":
