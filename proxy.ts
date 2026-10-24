@@ -15,6 +15,6 @@ export const config = {
   // MCP endpoints (they answer with OAuth errors, not redirects), the player
   // (it checks its own token), discovery documents and static files.
   matcher: [
-    "/((?!(?:sign-in|consent|api/auth|api/player|mcp|\\.well-known|_next/static|_next/image)(?:/|$)|favicon.ico$|icon.svg$).*)",
+    "/((?!(?:sign-in|consent|api/auth|api/player|mcp|\\.well-known|_next/static|_next/image)(?:/|$)|icon\\.png$|apple-icon\\.png$).*)",
   ],
 }
